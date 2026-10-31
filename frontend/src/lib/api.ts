@@ -1,3 +1,4 @@
+
 export interface InterviewQuestionItem {
   category: string;
   question: string;
@@ -28,26 +29,48 @@ export interface ParsedResumeResponse {
   estimated_experience_years?: number;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+/**
+ * API configuration
+ *
+ * Local development:
+ *   http://localhost:8000/api/v1
+ *
+ * Production:
+ *   Set NEXT_PUBLIC_API_URL in Vercel to:
+ *   https://careerpilot-ai-b6n6.onrender.com/api/v1
+ */
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"
+).replace(/\/+$/, "");
 
-async function safeFetch(url: string, options: RequestInit): Promise<Response> {
+/**
+ * Sends a request to the backend and provides a helpful error
+ * if the backend cannot be reached.
+ */
+async function safeFetch(
+  url: string,
+  options: RequestInit
+): Promise<Response> {
   try {
-    const res = await fetch(url, options);
-    return res;
-  } catch (err: any) {
-    if (err.name === "TypeError" && err.message.toLowerCase().includes("fetch")) {
+    return await fetch(url, options);
+  } catch (err: unknown) {
+    if (err instanceof TypeError) {
       throw new Error(
-        "Could not connect to the CareerPilot backend at http://localhost:8000. " +
-        "Please ensure the FastAPI backend is running! " +
-        "(Run 'run-backend.bat' or 'python -m uvicorn app.main:app --reload --port 8000' in the backend folder)."
+        `Could not connect to the CareerPilot backend at ${API_BASE_URL}. ` +
+          "Please check the backend URL, network connection, and CORS configuration."
       );
     }
+
     throw err;
   }
 }
 
-export async function uploadResumeFile(file: File): Promise<ParsedResumeResponse> {
-  // If it's a plain text file, we can also read it directly as fallback
+/**
+ * Uploads a resume file and returns the parsed resume data.
+ */
+export async function uploadResumeFile(
+  file: File
+): Promise<ParsedResumeResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -58,12 +81,18 @@ export async function uploadResumeFile(file: File): Promise<ParsedResumeResponse
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Failed to upload and parse resume file.");
+
+    throw new Error(
+      errorData.detail || "Failed to upload and parse resume file."
+    );
   }
 
   return res.json();
 }
 
+/**
+ * Runs the complete resume and job-description matching pipeline.
+ */
 export async function analyzeFullPipeline(
   resumeText: string,
   jdText: string,
@@ -79,21 +108,35 @@ export async function analyzeFullPipeline(
       resume_text: resumeText,
       jd_text: jdText,
       role_title: roleTitle,
-      company: company,
+      company,
     }),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Match analysis request failed.");
+
+    throw new Error(
+      errorData.detail || "Match analysis request failed."
+    );
   }
 
   return res.json();
 }
 
+/**
+ * Checks the backend health endpoint.
+ *
+ * Works locally and in production by deriving /health
+ * from the configured API base URL.
+ */
 export async function checkBackendHealth(): Promise<boolean> {
   try {
-    const res = await fetch("http://localhost:8000/health", { method: "GET" });
+    const healthUrl = `${API_BASE_URL.replace(/\/api\/v1\/?$/, "")}/health`;
+
+    const res = await fetch(healthUrl, {
+      method: "GET",
+    });
+
     return res.ok;
   } catch {
     return false;
